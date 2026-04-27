@@ -9,6 +9,7 @@ async def main():
     await init_db()
 
     bot = Bot(token=BOT_TOKEN)
+    await bot.delete_webhook(drop_pending_updates=True)
     dp = Dispatcher()
 
     dp.include_router(router)
