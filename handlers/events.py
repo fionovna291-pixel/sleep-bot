@@ -69,6 +69,7 @@ async def wake(msg: Message):
     user_id = msg.from_user.id
     state = load_state(user_id)
 
+    from datetime import datetime
     now = datetime.now()
 
     sleep_start = state["today"].get("sleep_start")
@@ -78,10 +79,17 @@ async def wake(msg: Message):
         state["today"]["naps"].append(int(nap))
 
     state["today"]["last_wake"] = now
-
     save_state(user_id, state)
 
-    await msg.answer("Записала пробуждение 🌞", reply_markup=main_kb)
+    # 👇 получаем рекомендацию
+    text = "Записала пробуждение 🌞"
+
+    rec = engine.human_next_recommendation(state)
+
+    if rec:
+        text += "\n\n" + rec
+
+    await msg.answer(text, reply_markup=main_kb)
 
 @router.message(F.text == "😴 Сон начался")
 async def sleep(msg: Message):
@@ -116,13 +124,14 @@ async def analyze(msg: Message):
         return
 
     text = f"""
-📊 Анализ дня:
+📊 Разбор дня:
 
-Среднее ВБ: {analysis['avg_wb']} мин
-Средний сон: {analysis['avg_nap']} мин
-Дневных снов: {analysis['count_naps']}
+▫️ Среднее ВБ: {analysis['avg_wb']} мин  
+▫️ Последнее ВБ: {analysis['last_wb']} мин  
+▫️ Средний сон: {analysis['avg_nap']} мин  
+▫️ Снов за день: {analysis['count_naps']}
 
-{engine.recommend(analysis, state)}
+{engine.human_recommendation(analysis, state)}
 """
 
     await msg.answer(text, reply_markup=main_kb)
