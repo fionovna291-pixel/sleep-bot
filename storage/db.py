@@ -1,32 +1,25 @@
-
-import aiosqlite
-import json
-
-DB = "sleep.db"
+user_states = {}
 
 async def init_db():
-    async with aiosqlite.connect(DB) as db:
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS state (
-            user_id INTEGER PRIMARY KEY,
-            data TEXT
-        )
-        """)
-        await db.commit()
+    pass
 
-async def load_state(user_id: int):
-    async with aiosqlite.connect(DB) as db:
-        cursor = await db.execute(
-            "SELECT data FROM state WHERE user_id=?",
-            (user_id,)
-        )
-        row = await cursor.fetchone()
-        return json.loads(row[0]) if row else None
+def get_default_state():
+    return {
+        "profile": {
+            "avg_wb": 120
+        },
+        "today": {
+            "wake_windows": [],
+            "naps": [],
+            "last_wake": None,
+            "sleep_start": None
+        }
+    }
 
-async def save_state(user_id: int, state: dict):
-    async with aiosqlite.connect(DB) as db:
-        await db.execute(
-            "REPLACE INTO state (user_id, data) VALUES (?, ?)",
-            (user_id, json.dumps(state))
-        )
-        await db.commit()
+def load_state(user_id):
+    if user_id not in user_states:
+        user_states[user_id] = get_default_state()
+    return user_states[user_id]
+
+def save_state(user_id, state):
+    user_states[user_id] = state

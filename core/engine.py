@@ -1,33 +1,33 @@
 class SleepEngine:
 
     def analyze(self, state):
-
         avg = state["profile"]["avg_wb"]
 
-        last_wb = state["today"]["wake_windows"][-1] if state["today"]["wake_windows"] else avg
+        wake_windows = state["today"]["wake_windows"]
+        naps = state["today"]["naps"]
+
+        last_wb = wake_windows[-1] if wake_windows else avg
 
         overtired = 0
         undertired = 0
 
-        # перегул
         if last_wb > avg + 20:
             overtired += 0.6
 
-        if state["today"]["naps"]:
-            if state["today"]["naps"][-1] < 40:
+        if naps:
+            if naps[-1] < 40:
                 overtired += 0.3
 
-        # недогул
         if last_wb < avg - 20:
             undertired += 0.6
 
         return {
             "overtired": min(overtired, 1),
-            "undertired": min(undertired, 1)
+            "undertired": min(undertired, 1),
+            "last_wb": last_wb
         }
 
     def decide(self, analysis, state):
-
         avg = state["profile"]["avg_wb"]
 
         if analysis["overtired"] > 0.6:
@@ -37,7 +37,3 @@ class SleepEngine:
             return {"wb": avg + 10, "mode": "undertired"}
 
         return {"wb": avg, "mode": "balanced"}
-
-
-
-
