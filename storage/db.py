@@ -23,3 +23,20 @@ def load_state(user_id):
 
 def save_state(user_id, state):
     user_states[user_id] = state
+
+def get_default_state():
+    return {
+        "profile": {
+            "age_months": None,
+            "target_wb": None
+        },
+        "today": {
+            "wake_windows": [],
+            "naps": [],
+            "last_wake": None,
+            "sleep_start": None
+        },
+        "dialog": {
+            "step": "start"
+        }
+    }

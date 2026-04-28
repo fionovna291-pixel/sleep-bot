@@ -72,9 +72,59 @@ async def analyze(msg: Message):
     user_id = msg.from_user.id
     state = load_state(user_id)
 
-    analysis = engine.analyze(state)
-    result = engine.decide(analysis, state)
+    analysis = engine.analyze_day(state)
 
-    text = format_response(result)
+    if not analysis:
+        await msg.answer("Пока недостаточно данных")
+        return
 
-    await msg.answer(text, reply_markup=main_kb)
+    text = f"""
+📊 Анализ дня:
+
+Среднее ВБ: {analysis['avg_wb']} мин
+Средний сон: {analysis['avg_nap']} мин
+Дневных снов: {analysis['count_naps']}
+
+{engine.recommend(analysis, state)}
+"""
+
+    await msg.answer(text)
+
+@router.message()
+async def dialog(msg: Message):
+    user_id = msg.from_user.id
+    state = load_state(user_id)
+
+    step = state["dialog"]["step"]
+    text = msg.text
+
+    # Шаг 1 — возраст
+    if step == "start":
+        state["dialog"]["step"] = "age"
+        save_state(user_id, state)
+        await msg.answer("Сколько месяцев ребенку?")
+        return
+
+    elif step == "age":
+        try:
+            age = int(text)
+            state["profile"]["age_months"] = age
+
+            # простая логика норм ВБ
+            if age < 6:
+                wb = 90
+            elif age < 12:
+                wb = 120
+            else:
+                wb = 150
+
+            state["profile"]["target_wb"] = wb
+
+            state["dialog"]["step"] = "done"
+            save_state(user_id, state)
+
+            await msg.answer(f"Отлично! Будем ориентироваться на ~{wb} минут ВБ 👍")
+            return
+        except:
+            await msg.answer("Напиши число, например: 6")
+            return
