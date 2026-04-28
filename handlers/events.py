@@ -9,25 +9,60 @@ from ui.keyboards import main_kb
 router = Router()
 engine = SleepEngine()
 
-def format_response(result):
-    wb = result["wb"]
-    mode = result["mode"]
-
-    if mode == "overtired":
-        text = "Похоже на перегул 😣\nПопробуй уложить раньше."
-    elif mode == "undertired":
-        text = "Похоже на недогул 🙂\nМожно чуть увеличить бодрствование."
-    else:
-        text = "Сейчас всё стабильно 👍"
-
-    return f"""{text}
-
-Ориентир следующего сна: ~{wb} минут бодрствования.
-"""
+# --- СТАРТ И ДИАЛОГ ---
 
 @router.message(F.text == "/start")
 async def start(msg: Message):
-    await msg.answer("Я помогу следить за сном малыша 👶", reply_markup=main_kb)
+    user_id = msg.from_user.id
+    state = load_state(user_id)
+
+    state["dialog"]["step"] = "age"
+    save_state(user_id, state)
+
+    await msg.answer("Привет! 👋\nСколько месяцев ребенку?")
+
+@router.message()
+async def dialog(msg: Message):
+    user_id = msg.from_user.id
+    state = load_state(user_id)
+
+    step = state["dialog"]["step"]
+    text = msg.text
+
+    # Ввод возраста
+    if step == "age":
+        try:
+            age = int(text)
+            state["profile"]["age_months"] = age
+
+            # простая логика норм
+            if age < 6:
+                wb = 90
+            elif age < 12:
+                wb = 120
+            else:
+                wb = 150
+
+            state["profile"]["target_wb"] = wb
+
+            state["dialog"]["step"] = "done"
+            save_state(user_id, state)
+
+            await msg.answer(
+                f"Отлично 👍\nБудем ориентироваться на ~{wb} минут бодрствования",
+                reply_markup=main_kb
+            )
+            return
+
+        except:
+            await msg.answer("Напиши число, например: 6")
+            return
+
+    # если профиль уже заполнен — игнорируем лишний текст
+    if step == "done":
+        await msg.answer("Используй кнопки ниже 👇", reply_markup=main_kb)
+
+# --- СОБЫТИЯ ДНЯ ---
 
 @router.message(F.text == "🌞 Проснулся")
 async def wake(msg: Message):
@@ -67,6 +102,8 @@ async def sleep(msg: Message):
 
     await msg.answer("Записала начало сна 😴", reply_markup=main_kb)
 
+# --- АНАЛИЗ ---
+
 @router.message(F.text == "📊 Анализ дня")
 async def analyze(msg: Message):
     user_id = msg.from_user.id
@@ -75,7 +112,7 @@ async def analyze(msg: Message):
     analysis = engine.analyze_day(state)
 
     if not analysis:
-        await msg.answer("Пока недостаточно данных")
+        await msg.answer("Пока недостаточно данных 🙂")
         return
 
     text = f"""
@@ -88,43 +125,4 @@ async def analyze(msg: Message):
 {engine.recommend(analysis, state)}
 """
 
-    await msg.answer(text)
-
-@router.message()
-async def dialog(msg: Message):
-    user_id = msg.from_user.id
-    state = load_state(user_id)
-
-    step = state["dialog"]["step"]
-    text = msg.text
-
-    # Шаг 1 — возраст
-    if step == "start":
-        state["dialog"]["step"] = "age"
-        save_state(user_id, state)
-        await msg.answer("Сколько месяцев ребенку?")
-        return
-
-    elif step == "age":
-        try:
-            age = int(text)
-            state["profile"]["age_months"] = age
-
-            # простая логика норм ВБ
-            if age < 6:
-                wb = 90
-            elif age < 12:
-                wb = 120
-            else:
-                wb = 150
-
-            state["profile"]["target_wb"] = wb
-
-            state["dialog"]["step"] = "done"
-            save_state(user_id, state)
-
-            await msg.answer(f"Отлично! Будем ориентироваться на ~{wb} минут ВБ 👍")
-            return
-        except:
-            await msg.answer("Напиши число, например: 6")
-            return
+    await msg.answer(text, reply_markup=main_kb)
