@@ -1,30 +1,44 @@
-user_states = {}
+from datetime import datetime
+
+users = {}
 
 async def init_db():
     pass
 
-def get_default_state():
-    return {
-        "profile": {
-            "age_months": None,
-            "target_wb": None
-        },
-        "today": {
-            "wake_windows": [],
-            "naps": [],
-            "last_wake": None,
-            "sleep_start": None
-        },
-        "dialog": {
-            "step": "start"
+def get_user(user_id):
+    if user_id not in users:
+        users[user_id] = {
+            "profile": {
+                "age": None,
+                "avg_wb": None
+            },
+            "today": {
+                "sleep_start": None,
+                "wake_windows": [],
+                "naps": []
+            }
         }
-    }
+    return users[user_id]
 
-def load_state(user_id):
-    if user_id not in user_states:
-        user_states[user_id] = get_default_state()
-    return user_states[user_id]
+def save_sleep_start(user_id):
+    user = get_user(user_id)
+    user["today"]["sleep_start"] = datetime.now()
 
-def save_state(user_id, state):
-    user_states[user_id] = state
+def save_wakeup(user_id):
+    user = get_user(user_id)
 
+    start = user["today"]["sleep_start"]
+    if not start:
+        return None
+
+    now = datetime.now()
+    duration = (now - start).seconds // 60
+
+    user["today"]["naps"].append(duration)
+    user["today"]["sleep_start"] = None
+
+    return duration
+
+def save_wake_window(user_id, minutes):
+    user = get_user(user_id)
+    user["today"]["wake_windows"].append(minutes)

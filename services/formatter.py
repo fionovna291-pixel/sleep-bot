@@ -1,16 +1,17 @@
-def format_response(analysis, decision):
+def format_response(analysis, wb):
 
-    text = []
+    if analysis["status"] == "overtired":
+        text = "Есть признаки перегула 😵"
 
-    if analysis["overtired"] > 0.6:
-        text.append("Похоже, накопилась усталость — это видно по последнему сну.")
+    elif analysis["status"] == "undertired":
+        text = "Похоже на недогул 🙂"
 
-    elif analysis["undertired"] > 0.6:
-        text.append("Скорее всего, ребёнок ещё не до конца устал.")
+    elif analysis["status"] == "balanced":
+        text = "Сейчас всё хорошо 👍"
 
     else:
-        text.append("Сейчас ситуация стабильная.")
+        return "Недостаточно данных"
 
-    text.append(f"Ориентир следующего сна: ~{decision['wb']} минут бодрствования.")
+    return f"""{text}
 
-    return "\n\n".join(text)
+Рекомендуемое окно бодрствования: ~{wb} минут"""

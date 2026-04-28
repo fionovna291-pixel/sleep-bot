@@ -2,136 +2,80 @@ from aiogram import Router, F
 from aiogram.types import Message
 from datetime import datetime
 
-from storage.db import load_state, save_state
-from core.engine import SleepEngine
+from storage.db import get_user, save_sleep_start, save_wakeup, save_wake_window
+from services.sleep_engine import SleepEngine
+from services.formatter import format_response
 from ui.keyboards import main_kb
 
 router = Router()
 engine = SleepEngine()
 
-# --- СТАРТ И ДИАЛОГ ---
-
 @router.message(F.text == "/start")
-async def start(msg: Message):
-    user_id = msg.from_user.id
-    state = load_state(user_id)
+async def start(message: Message):
+    await message.answer("Привет! 👋\nСколько месяцев ребенку?")
 
-    state["dialog"]["step"] = "age"
-    save_state(user_id, state)
+@router.message(lambda m: m.text.isdigit())
+async def set_age(message: Message):
+    user = get_user(message.from_user.id)
 
-    await msg.answer("Привет! 👋\nСколько месяцев ребенку?")
+    age = int(message.text)
+    user["profile"]["age"] = age
 
-@router.message()
-async def dialog(msg: Message):
-    user_id = msg.from_user.id
-    state = load_state(user_id)
+    # простая логика
+    if age <= 3:
+        avg = 60
+    elif age <= 6:
+        avg = 90
+    else:
+        avg = 120
 
-    step = state["dialog"]["step"]
-    text = msg.text
+    user["profile"]["avg_wb"] = avg
 
-    # Ввод возраста
-    if step == "age":
-        try:
-            age = int(text)
-            state["profile"]["age_months"] = age
-
-            # простая логика норм
-            if age < 6:
-                wb = 90
-            elif age < 12:
-                wb = 120
-            else:
-                wb = 150
-
-            state["profile"]["target_wb"] = wb
-
-            state["dialog"]["step"] = "done"
-            save_state(user_id, state)
-
-            await msg.answer(
-                f"Отлично 👍\nБудем ориентироваться на ~{wb} минут бодрствования",
-                reply_markup=main_kb
-            )
-            return
-
-        except:
-            await msg.answer("Напиши число, например: 6")
-            return
-
-    # если профиль уже заполнен — игнорируем лишний текст
-    if step == "done":
-        await msg.answer("Используй кнопки ниже 👇", reply_markup=main_kb)
-
-# --- СОБЫТИЯ ДНЯ ---
-
-@router.message(F.text == "🌞 Проснулся")
-async def wake(msg: Message):
-    user_id = msg.from_user.id
-    state = load_state(user_id)
-
-    from datetime import datetime
-    now = datetime.now()
-
-    sleep_start = state["today"].get("sleep_start")
-
-    if sleep_start:
-        nap = (now - sleep_start).total_seconds() / 60
-        state["today"]["naps"].append(int(nap))
-
-    state["today"]["last_wake"] = now
-    save_state(user_id, state)
-
-    # 👇 получаем рекомендацию
-    text = "Записала пробуждение 🌞"
-
-    rec = engine.human_next_recommendation(state)
-
-    if rec:
-        text += "\n\n" + rec
-
-    await msg.answer(text, reply_markup=main_kb)
+    await message.answer(
+        f"Ок 👍\nСреднее ВБ: ~{avg} минут",
+        reply_markup=main_kb
+    )
 
 @router.message(F.text == "😴 Сон начался")
-async def sleep(msg: Message):
-    user_id = msg.from_user.id
-    state = load_state(user_id)
+async def sleep_start(message: Message):
+    save_sleep_start(message.from_user.id)
+    await message.answer("Записала 😴")
 
-    now = datetime.now()
+@router.message(F.text == "🌞 Проснулся")
+async def wake_up(message: Message):
+    user_id = message.from_user.id
 
-    last_wake = state["today"].get("last_wake")
+    duration = save_wakeup(user_id)
 
-    if last_wake:
-        wb = (now - last_wake).total_seconds() / 60
-        state["today"]["wake_windows"].append(int(wb))
-
-    state["today"]["sleep_start"] = now
-
-    save_state(user_id, state)
-
-    await msg.answer("Записала начало сна 😴", reply_markup=main_kb)
-
-# --- АНАЛИЗ ---
-
-@router.message(F.text == "📊 Анализ дня")
-async def analyze(msg: Message):
-    user_id = msg.from_user.id
-    state = load_state(user_id)
-
-    analysis = engine.analyze_day(state)
-
-    if not analysis:
-        await msg.answer("Пока недостаточно данных 🙂")
+    if duration is None:
+        await message.answer("Сначала нажми 'Сон начался'")
         return
 
-    text = f"""
-📊 Разбор дня:
+    # считаем ВБ
+    now = datetime.now()
+    user = get_user(user_id)
 
-▫️ Среднее ВБ: {analysis['avg_wb']} мин  
-▫️ Последнее ВБ: {analysis['last_wb']} мин  
-▫️ Средний сон: {analysis['avg_nap']} мин  
-▫️ Снов за день: {analysis['count_naps']}
+    if user["today"]["wake_windows"]:
+        last_sleep = now
+        wb = duration  # упрощенно
+    else:
+        wb = duration
 
-{engine.human_recommendation(analysis, state)}
-"""
+    save_wake_window(user_id, wb)
 
-    await msg.answer(text, reply_markup=main_kb)
+    await message.answer(f"Сон: {duration} мин")
+
+@router.message(F.text == "📊 Анализ дня")
+async def analyze(message: Message):
+    user = get_user(message.from_user.id)
+
+    analysis = engine.analyze(user)
+    wb = engine.recommend(user, analysis)
+
+    text = format_response(analysis, wb)
+
+    await message.answer(text)
+
+@router.message()
+async def fallback(message: Message):
+    await message.answer("Используй кнопки 👇", reply_markup=main_kb)
